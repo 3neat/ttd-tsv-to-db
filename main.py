@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import exists
 from adops import util
 import os
 import argparse
@@ -15,6 +16,7 @@ import datetime
 #Set up processed database
 Base = declarative_base()
 engine = create_engine()
+engine2 = create_engine()
 
 session = Session(bind=engine)
 
@@ -46,44 +48,41 @@ def append_column(df, value):
 
 def import_to_sql(reports, dest_table):
     for report in reports:
-        df = pd.DataFrame()
-        df = report.to_df(rename_cols=True)
-
-        # Append Report Start Date:
-        ser = append_column(df,report.start_date)
-        start_series = pd.to_datetime(pd.Series(ser, name="report_start_date"))
-        tmp_df = pd.concat([df, start_series], axis=1)
-
-        # Append Report End Date:
-        ser = append_column(df,report.end_date)
-        end_series = pd.to_datetime(pd.Series(ser, name="report_end_date"))
-        df = pd.concat([tmp_df, end_series], axis=1)
-
         filehash = report.githash()
-        rows = len(df.index)
-        date_processed = datetime.datetime.now()
-        report_type = report.report_type
-        print "Inserting %s rows for file: %s" % (rows, report.filename)
 
-        # CHANGE VARIABLE
-        df.to_sql(dest_table, engine2, if_exists='append')
+        if session.query(exists().where(Processed.filehash == filehash)).scalar():
+            print "*** Already Processed: %s" % report.filename
+        else:
+            df = pd.DataFrame()
+            df = report.to_df(rename_cols=True)
 
-        process_transaction = Processed(filehash=filehash, filename=report.filename, row_count=rows,
-                                        date_processed=date_processed, report_type=report.report_type,
-                                        report_start_date=report.start_date,
-                                        report_end_date=report.end_date)
-        session.add(process_transaction)
-        session.commit()
+            # Append Report Start Date:
+            ser = append_column(df,report.start_date)
+            start_series = pd.to_datetime(pd.Series(ser, name="report_start_date"))
+            tmp_df = pd.concat([df, start_series], axis=1)
+
+            # Append Report End Date:
+            ser = append_column(df,report.end_date)
+            end_series = pd.to_datetime(pd.Series(ser, name="report_end_date"))
+            df = pd.concat([tmp_df, end_series], axis=1)
 
 
-## if report_type == 'Site':
-## if report_type == 'Site List':
-# if report_type == 'Data Element Report':
-# if report_type == 'Time of Day':
-# if report_type == 'Browser Report':
+            rows = len(df.index)
+            date_processed = datetime.datetime.now()
+            print "Inserting %s rows for file: %s" % (rows, report.filename)
+
+            # CHANGE VARIABLE
+            df.to_sql(dest_table, engine2, if_exists='append')
+
+            process_transaction = Processed(filehash=filehash, filename=report.filename, row_count=rows,
+                                            date_processed=date_processed, report_type=report.report_type,
+                                            report_start_date=report.start_date,
+                                            report_end_date=report.end_date)
+            session.add(process_transaction)
+            session.commit()
+
+
 # (Error w/ recency bucket datatype conflict in "60+" string) if report_type == 'Ad Group Recency':
-## if report_type == 'Performance':
-# if report_type == 'Geo Report':
 
 def main(tablename, reporttype, reportfolder='reports/'):
     current_directory = os.getcwd()
@@ -92,7 +91,6 @@ def main(tablename, reporttype, reportfolder='reports/'):
     filtered_reports = []
 
     for rpt in reports:
-        # CHANGE VARIABLE
         if rpt.report_type == reporttype:
             filtered_reports.append(rpt)
 
@@ -105,6 +103,5 @@ parser.add_argument("reporttype", help="define the report type to import to DB",
 parser.add_argument("tablename", help="import into this table name",
                     choices=["sites", "site_lists", "data_elements", "time_of_day", "performance", "geography"])
 args = parser.parse_args()
-
 main(args.tablename, args.reporttype)
 
