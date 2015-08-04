@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from adops import util
 import os
+import argparse
 import pandas as pd
 import datetime
 
@@ -11,11 +12,9 @@ import datetime
 # - add in check if file has been uploaded before
 
 
-# Set up processed database
+#Set up processed database
 Base = declarative_base()
-engine = create_engine('postgresql://blah@localhost:5432/reports')
-engine2 = create_engine('postgresql://blah@localhost:5432/reports')
-
+engine = create_engine()
 
 session = Session(bind=engine)
 
@@ -45,7 +44,7 @@ def append_column(df, value):
     return rows
 
 
-def import_to_sql(reports):
+def import_to_sql(reports, dest_table):
     for report in reports:
         df = pd.DataFrame()
         df = report.to_df(rename_cols=True)
@@ -67,7 +66,7 @@ def import_to_sql(reports):
         print "Inserting %s rows for file: %s" % (rows, report.filename)
 
         # CHANGE VARIABLE
-        df.to_sql('time_of_day', engine2, if_exists='append')
+        df.to_sql(dest_table, engine2, if_exists='append')
 
         process_transaction = Processed(filehash=filehash, filename=report.filename, row_count=rows,
                                         date_processed=date_processed, report_type=report.report_type,
@@ -77,25 +76,35 @@ def import_to_sql(reports):
         session.commit()
 
 
-
-
 ## if report_type == 'Site':
 ## if report_type == 'Site List':
-## if report_type == 'Data Element Report':
-## if report_type == 'Time of Day':
+# if report_type == 'Data Element Report':
+# if report_type == 'Time of Day':
 # if report_type == 'Browser Report':
-# if report_type == 'Ad Group Recency':
-# if report_type == 'Performance':
+# (Error w/ recency bucket datatype conflict in "60+" string) if report_type == 'Ad Group Recency':
+## if report_type == 'Performance':
 # if report_type == 'Geo Report':
 
-current_directory = os.getcwd()
-folder = os.path.join(current_directory, 'reports/')
-reports = util.init_reports(folder)
-filtered_reports = []
-for rpt in reports:
+def main(tablename, reporttype, reportfolder='reports/'):
+    current_directory = os.getcwd()
+    folder = os.path.join(current_directory, reportfolder)
+    reports = util.init_reports(folder)
+    filtered_reports = []
 
-    # CHANGE VARIABLE
-    if rpt.report_type == 'Time of Day':
-        filtered_reports.append(rpt)
+    for rpt in reports:
+        # CHANGE VARIABLE
+        if rpt.report_type == reporttype:
+            filtered_reports.append(rpt)
 
-import_to_sql(filtered_reports)
+    import_to_sql(filtered_reports, tablename)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("reporttype", help="define the report type to import to DB",
+                    choices=["Site", "Site List", "Data Element Report", "Time of Day", "Performance", "Geo Report"])
+
+parser.add_argument("tablename", help="import into this table name",
+                    choices=["sites", "site_lists", "data_elements", "time_of_day", "performance", "geography"])
+args = parser.parse_args()
+
+main(args.tablename, args.reporttype)
+
