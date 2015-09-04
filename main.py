@@ -15,8 +15,9 @@ import datetime
 
 #Set up processed database
 Base = declarative_base()
-engine = create_engine()
-engine2 = create_engine()
+engine = create_engine('postgresql://stuffhere')
+engine2 = create_engine('postgresql://stuffhere')
+
 
 session = Session(bind=engine)
 
@@ -51,7 +52,10 @@ def import_to_sql(reports, dest_table):
         filehash = report.githash()
 
         if session.query(exists().where(Processed.filehash == filehash)).scalar():
-            print "*** Already Processed: %s" % report.filename
+            pass
+
+            # TODO: add this as a verbosity level
+            #print "*** Already Processed: %s" % report.filename
         else:
             df = pd.DataFrame()
             df = report.to_df(rename_cols=True)
@@ -97,11 +101,36 @@ def main(tablename, reporttype, reportfolder='reports/'):
     import_to_sql(filtered_reports, tablename)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("reporttype", help="define the report type to import to DB",
+parser.add_argument("reporttype", help="define the report type to import to DB", nargs="?",
                     choices=["Site", "Site List", "Data Element Report", "Time of Day", "Performance", "Geo Report"])
 
-parser.add_argument("tablename", help="import into this table name",
+parser.add_argument("tablename", help="import into this table name", nargs="?",
                     choices=["sites", "site_lists", "data_elements", "time_of_day", "performance", "geography"])
 args = parser.parse_args()
-main(args.tablename, args.reporttype)
+
+if __name__ == "__main__":
+    # if args.tablename & args.reporttype:
+    #     main(args.tablename, args.reporttype)
+
+    # else:
+    import_combos = zip(["Site",
+                         "Site List",
+                         "Data Element Report",
+                         "Time of Day",
+                         "Performance",
+                         "Geo Report",
+                         "Browser Report"],
+                        ["sites",
+                         "site_lists",
+                         "data_elements",
+                         "time_of_day",
+                         "performance",
+                         "geography",
+                         "browsers"])
+
+    for combo in import_combos:
+        reporttype, tablename = combo
+        print "Starting to import %s    -->     %s" % (reporttype, tablename)
+        main(tablename, reporttype)
+
 
